@@ -49,6 +49,9 @@
 #endif
 #include "hw/sh4/sh4_interpreter.h"
 #include "hw/sh4/dyna/ngen.h"
+#ifdef USE_DREAMLINK_DEVICES
+#include "sdl/dreamlink.h"
+#endif
 
 settings_t settings;
 constexpr char const *BIOS_TITLE = "Dreamcast BIOS";
@@ -632,6 +635,11 @@ void Emulator::loadGame(const char *path, LoadProgress *progress)
 		}
 		if (!settings.naomi.slave)
 		{
+#ifdef USE_DREAMLINK_DEVICES
+			// Note: ordinarily we would like to use the 'events' system for this step.
+			// However, this call can change 'config::MapleExpansionDevices', and therefore needs to run before 'mcfg_CreateDevices'.
+			reconnectDreamLinks();
+#endif
 			mcfg_DestroyDevices();
 			mcfg_CreateDevices();
 			if (settings.platform.isNaomi())
@@ -691,9 +699,9 @@ void Emulator::runInternal()
 		getSh4Executor()->Step();
 		singleStep = false;
 	}
-	else if(stepRangeTo != 0)
+	else if (stepRangeTo != 0)
 	{
-		while (Sh4cntx.pc >= stepRangeFrom && Sh4cntx.pc <= stepRangeTo)
+		while (Sh4cntx.pc >= stepRangeFrom && Sh4cntx.pc < stepRangeTo)
 			getSh4Executor()->Step();
 
 		stepRangeFrom = 0;
@@ -939,7 +947,8 @@ void Emulator::run()
 		runInternal();
 		if (ggpo::active())
 			ggpo::nextFrame();
-	} catch (...) {
+	} catch (const std::exception& e) {
+		ERROR_LOG(COMMON, "Exception: %s\n", e.what());
 		setNetworkState(false);
 		state = Error;
 		getSh4Executor()->Stop();
